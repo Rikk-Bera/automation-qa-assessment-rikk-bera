@@ -1,0 +1,453 @@
+{
+  "name": "Bonus - Uptime Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "id": "37560d5f-56a6-481b-bd7f-3c48eba97531",
+      "name": "Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1120,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CHANGE THIS to the app you tested in Task 1\nconst url = 'https://demo.realworld.show';\n// const url = 'https://httpbin.org/status/503';\n\nreturn [{ json: { url, startedAt: Date.now() } }];"
+      },
+      "id": "1cd2ae80-8711-4ab9-a48b-3a54dfa7758e",
+      "name": "Config and Timer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "8c6eba62-455c-4798-b87f-aabe2bdad254",
+      "name": "Ping Web App",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -688,
+        112
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config and Timer').first().json;\nconst r = $input.first().json;\n\nconst statusCode = r.statusCode ?? 0;          // 0 = no response at all (timeout / DNS / network)\nconst responseTimeMs = Date.now() - cfg.startedAt;\nconst isUp = statusCode === 200;\n\n// Track stats for the daily summary (persists while the workflow is published)\nconst s = $getWorkflowStaticData('global');\ns.checks = (s.checks || 0) + 1;\nif (!isUp) s.failures = (s.failures || 0) + 1;\ns.totalMs = (s.totalMs || 0) + responseTimeMs;\ns.maxMs = Math.max(s.maxMs || 0, responseTimeMs);\ns.url = cfg.url;\n\nreturn [{\n  json: {\n    url: cfg.url,\n    statusCode,\n    responseTimeMs,\n    isUp,\n    error: r.error ? (r.error.message || String(r.error)) : null,\n    checkedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "65180208-e7da-4662-9e74-fea9238c5d04",
+      "name": "Evaluate Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cb5",
+              "leftValue": "={{ $json.isUp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fb4a2948-fea5-4a9e-b1a0-2f6396784bd8",
+      "name": "App up? (status 200)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        112
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "86fc52e8-de03-4038-b7dd-433b38d6e2c4",
+      "name": "OK - No Alert",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 30
+      },
+      "id": "bf858f19-4a38-48fd-8442-44ea9e0e4856",
+      "name": "Wait 30s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        224
+      ],
+      "webhookId": "5f3c2a10-8b1e-4c55-9a77-2d6f0e4b1a01"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config and Timer').first().json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "eb1f32fe-cf93-46c6-ac8a-7d98c4f410e1",
+      "name": "Re-check Ping",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        224
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config and Timer').first().json;\nconst first = $('Evaluate Check').first().json;\nconst r = $input.first().json;\n\nconst esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst retryStatus = r.statusCode ?? 0;\nconst isUp = retryStatus === 200;\nconst error = r.error ? (r.error.message || String(r.error)) : first.error;\nconst checkedAt = new Date().toISOString();\n\nconst alertText =\n  `🚨 <b>APP DOWN</b>\\n\\n` +\n  `URL: ${esc(cfg.url)}\\n` +\n  `First check status: ${first.statusCode} (0 = no response)\\n` +\n  `Retry status: ${retryStatus}\\n` +\n  `Error: ${esc(error || 'none')}\\n` +\n  `Time: ${checkedAt}`;\n\nreturn [{ json: { url: cfg.url, isUp, retryStatus, alertText } }];"
+      },
+      "id": "9fb6854f-84d1-40f2-a3c6-2e84a4494bcd",
+      "name": "Evaluate Recheck",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cb10",
+              "leftValue": "={{ $json.isUp }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7a1d2cd6-d578-470e-837b-cee3923a1286",
+      "name": "Still down?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        672,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "1608147788",
+        "text": "={{ $json.alertText }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "05b05bd4-120d-4cdd-9242-6b9a3c61eb3c",
+      "name": "Telegram - DOWN Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        912,
+        128
+      ],
+      "webhookId": "a147e984-8169-4ec0-a67d-51c8464f39fe",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZdaZwgo4lhF4WORw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "b6e8197f-54c3-4f6b-8770-c7df512a35d0",
+      "name": "Recovered - Temporary Blip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        912,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c06214b9-df20-48f6-801d-cc2c45099db6",
+      "name": "Daily 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1120,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $getWorkflowStaticData('global');\nconst esc = t => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst checks = s.checks || 0;\nconst fails = s.failures || 0;\nconst avg = checks ? Math.round((s.totalMs || 0) / checks) : 0;\nconst uptime = checks ? (((checks - fails) / checks) * 100).toFixed(2) : 'n/a';\n\nconst text =\n  `📊 <b>Daily Uptime Summary</b>\\n\\n` +\n  `URL: ${esc(s.url || 'n/a')}\\n` +\n  `Checks: ${checks}\\n` +\n  `Failed checks: ${fails}\\n` +\n  `Uptime: ${uptime}%\\n` +\n  `Avg response: ${avg} ms\\n` +\n  `Slowest: ${s.maxMs || 0} ms`;\n\n// reset for the next day\ns.checks = 0; s.failures = 0; s.totalMs = 0; s.maxMs = 0;\n\nreturn [{ json: { text } }];"
+      },
+      "id": "03af7c98-d9f1-4e1c-b3b9-2d3a86cf1041",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "1608147788",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "2b541c77-7bda-4703-930e-3da4f4687345",
+      "name": "Telegram - Daily Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -688,
+        512
+      ],
+      "webhookId": "da891617-3438-429d-9b70-e5cef2fd0807",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZdaZwgo4lhF4WORw",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Config and Timer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config and Timer": {
+      "main": [
+        [
+          {
+            "node": "Ping Web App",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ping Web App": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Check": {
+      "main": [
+        [
+          {
+            "node": "App up? (status 200)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "App up? (status 200)": {
+      "main": [
+        [
+          {
+            "node": "OK - No Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 30s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30s": {
+      "main": [
+        [
+          {
+            "node": "Re-check Ping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-check Ping": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Recheck",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Recheck": {
+      "main": [
+        [
+          {
+            "node": "Still down?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still down?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - DOWN Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recovered - Temporary Blip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 9am": {
+      "main": [
+        [
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6dceecb1-0b34-43f1-8ed2-66d65a4a0316",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f8f9cd2af5e518ac4f55963679c1733728caf08b6c7ccd43b4146909eb040b59"
+  },
+  "id": "x2Vq7IKkcIW494N0",
+  "tags": []
+}

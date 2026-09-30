@@ -1,0 +1,306 @@
+{
+  "name": "Task2 - GitHub Morning Brief",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "e481df3b-1d4c-4589-8d23-0248088095a5",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1136,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/search/repositories?q=language:python&sort=stars&order=desc&per_page=10",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0a480d06-c725-47ee-9aa7-81df9760082d",
+      "name": "Get GitHub Repositories",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -912,
+        32
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const repos = $input.first().json.items || [];\n\nreturn repos.slice(0, 5).map(repo => ({\n  json: {\n    name: repo.full_name,\n    owner: repo.owner.login,\n    repo: repo.name,\n    stars: repo.stargazers_count,\n    url: repo.html_url,\n    description: repo.description\n  }\n}));"
+      },
+      "id": "3e30e86d-1680-467c-b958-296b332be3f5",
+      "name": "Select Top 5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -688,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.owner }}/{{ $json.repo }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5f62be70-01c2-4616-aa58-c57b4b096686",
+      "name": "Enrich Repository",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -480,
+        -80
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json)\n  .sort((a, b) => b.stargazers_count - a.stargazers_count);\n\nconst lines = items.map((r, i) =>\n  `${i + 1}. ${r.full_name}\\n   ⭐ ${r.stargazers_count} | 🍴 ${r.forks_count} | 🐛 ${r.open_issues_count}\\n   ${r.html_url}`\n);\nconst popular = items.filter(r => r.stargazers_count > 1000).length;\n\nreturn [{\n  json: {\n    digest: `☀️ Morning Brief — Top Python Repos\\n\\n${lines.join('\\n\\n')}`,\n    total: items.length,\n    popularCount: popular\n  }\n}];"
+      },
+      "id": "5064fa7f-e88e-4cf5-a1c9-19da3129e668",
+      "name": "Build Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.popularCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8002cdc2-b226-45bd-8e04-7c577491c231",
+      "name": "Any repo > 1000 stars?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "1608147788",
+        "text": "={{ $json.digest }}\n\n🔥 {{ $json.popularCount }} of {{ $json.total }} repos have more than 1000 stars.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "ad7d6c4d-e31a-4969-b54a-30ef3f075600",
+      "name": "Telegram - Popular Digest",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        -176
+      ],
+      "webhookId": "1fb1d205-b48d-4a91-a7e9-0a44463b7e30",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZdaZwgo4lhF4WORw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1608147788",
+        "text": "={{ $json.digest }}\n\nℹ️ No repos above the 1000-star threshold.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "81a1576b-352d-4559-81d7-1919a520cc14",
+      "name": "Telegram - Low Activity Digest",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        32
+      ],
+      "webhookId": "3f762e79-7afb-44cd-b0a8-b5ae2f0c478a",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZdaZwgo4lhF4WORw",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1608147788",
+        "text": "=   ⚠️ n8n workflow error: a GitHub API call failed.\n   {{ JSON.stringify($json).slice(0, 200).replace(/[_*\\[\\]`]/g, ' ') }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "47211c11-7b97-4922-b48e-6757e5a56759",
+      "name": "Telegram - Error Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -256,
+        176
+      ],
+      "executeOnce": true,
+      "webhookId": "71ac3433-7519-48e3-a349-40b5049eb4f6",
+      "credentials": {
+        "telegramApi": {
+          "id": "ZdaZwgo4lhF4WORw",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get GitHub Repositories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GitHub Repositories": {
+      "main": [
+        [
+          {
+            "node": "Select Top 5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Top 5": {
+      "main": [
+        [
+          {
+            "node": "Enrich Repository",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Repository": {
+      "main": [
+        [
+          {
+            "node": "Build Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Error Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Any repo > 1000 stars?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any repo > 1000 stars?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Popular Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Low Activity Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "43d8c084-8a55-4e47-b32b-3362fc5fc813",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f8f9cd2af5e518ac4f55963679c1733728caf08b6c7ccd43b4146909eb040b59"
+  },
+  "id": "NzVq7k9lfwo8zWAB",
+  "tags": []
+}
