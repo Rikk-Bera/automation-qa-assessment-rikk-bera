@@ -1,7 +1,7 @@
 # Automation & QA Developer Assessment — Rikk Bera
 
 Everything here was built and tested against a local n8n instance (`npx n8n`) and the public RealWorld demo app (https://demo.realworld.show).
-Walkthrough video: **[ADD LOOM LINK]**
+Walkthrough video: **https://drive.google.com/file/d/1eWAXkbuQLluRYhKv6G4pYevXwVtG91qv/view?usp=sharing**
 
 ## Files
 | File | What it is |
